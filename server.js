@@ -1,10 +1,8 @@
-//30 char tall for flex
-
-
 const fs = require("fs");
 const Discord = require("discord.js");
-
+require("dotenv").config();
 const { parse, stringify } = require("flatted/cjs");
+
 const client = new Discord.Client();
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const help_doc =
@@ -20,9 +18,9 @@ const help_doc =
   "`{word} create-channel [channel name]` will create a text channel.\n" +
   "`{word} join #[channel]` will allow you to post in any created channel.\n" + 
   "`{word} gamble [amount] on [1-10]` gives you a 1 in 5 chance of winning 5 times your bet.\n" +
-  "`{word} gamble *all* on [1-10]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
+  "`{word} gamble all on [1-10]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
   "`{word} boot @user` costs 10. Will kick them from the server, however they will always be reinvited.\n" +
-  "`{word} multiply [2-3]` will cost you the square or cube root of all of your score. It will then multiply all of your winnings by that factor for 1 minute.";
+  "`{word} multiply [2-5]` will leave you with your amount divided by the multiplier you have entered. This multiplier will affect your score gains for 1 minute.";
 
 var servers = [];
 
@@ -44,6 +42,9 @@ class User {
   }
   add_score(amount) {
     this.score += amount * this.score_multiplier;
+    if(this.score >= 999999999){
+      this.score = 999999999;
+    }
   }
   set_score(score) {
     this.score = score;
@@ -110,17 +111,16 @@ class Server {
   get_leaderboard() {
     let printed_obj = [];
     this.users.sort(function(user_1, user_2) {
-      if (user_1.score < user_2.score) {
-        return 1;
-      }
-      if (user_1.score > user_2.score) {
-        return -1;
-      }
-      return 0;
+      return user_1.score < user_2.score ? 1 : -1;
     });
+    let user_number = 1;
     for (let user of this.users) {
       if(user.score > 0){
         printed_obj.push([user.username.toString(), user.score.toString()]);
+        user_number++;
+      }
+      if(table_format(printed_obj).length >= 2000){
+        return table_format(printed_obj.slice(0,-1));
       }
     }
     return table_format(printed_obj);
@@ -375,7 +375,6 @@ class Server {
     let channel = this.get_channel();
     if(user.score == 0) {
       user.add_score(1);
-      return;
     }
     let response = bound_check(user, number, 1, 5);
     if (response != '') {
@@ -433,12 +432,12 @@ class Server {
       this.get_channel(`${user.at()} you are already powered up.`);
       return;
     }
-    let response = bound_check(user, Number(multiplier), 2, 3);
+    let response = bound_check(user, Number(multiplier), 2, 5);
     if(response != "") {
       this.get_channel().send(response);
     } else {
       let pre_score = user.score;
-      user.set_score(Math.round(Math.pow(user.score, 1/multiplier)));
+      user.set_score(Math.round(user.score / multiplier));
       user.set_score_multiplier(multiplier);
       await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute of multiplier
       let post_score = user.score;
@@ -604,27 +603,34 @@ client.on("guildMemberAdd", member => { //member joins the server
   }
 });
 
-async function read_data() {
-  await fs.readFile("data.json", async (err, data) => {
+function read_data() {
+  fs.readFile("./data.json", (err, data) => {
     let servers = [];
     console.log("Reading data...");
     if (err) {
-      console.log("Data unable to be read.");
+      if (fs.existsSync("./data.json")) {
+        console.log("Data unable to be read.");
+      } else{
+        fs.writeFile('data.json', '[]', function (err) {
+          if (err) return console.log(err);
+          console.log('data.json was created.');
+          servers = [];
+        });
+      }
+      
     } else if (JSON.parse(data) == undefined) {
       servers = [];
       console.log(JSON.stringify(servers, null, 2));
     } else {
       servers = JSON.parse(data);
       servers = to_object(servers);
-      //servers = to_object_recursive(servers);
-      //console.log(JSON.stringify(servers, null, 2));
     }
   });
 }
-async function write_data() {
-  await fs.writeFile("data.json", JSON.stringify(servers, null, 2), err => {
+function write_data() {
+  fs.writeFile("data.json", JSON.stringify(servers, null, 2), err => {
     if (err) {
-      console.log("Data unable to be written");
+      console.log("Data was unable to be written.");
     } else {
       let d = new Date();
       console.log(
@@ -644,23 +650,23 @@ async function write_data() {
 
 function bound_check(user, input, lower, upper) {
   if (isNaN(input)) {
-    return "Please enter a valid number";
+    return `${user.at()} Please enter a valid number`;
   }
   if (isNaN(input) || input < lower || input > upper) {
-    return `Please choose a number between ${lower} and ${upper}.`;
+    return `${user.at()} Please choose a number between ${lower} and ${upper}.`;
   }
   return '';
 }
 
 function afford_check(user, amount) {
   if (isNaN(amount)) {
-    return "Please enter a valid number.";
+    return `${user.at()} Please enter a valid number.`;
   }
   if (isNaN(amount) || amount < 0) {
-    return `Please enter an amount more than 0.`;
+    return `${user.at()} Please enter an amount more than 0.`;
   }
   if (amount > user.score) {
-    return "You don't have that much to spend.";
+    return `${user.at()} You don't have that much to spend.`;
   }
   return '';
 }
@@ -700,6 +706,7 @@ function word_validate(word, server) {
 
 
 function table_format(items) {
+  
   let output = "```╭───────────────────────────────────┬──────────╮\n";
   for (let item of items) {
     let key_whitespace = " ".repeat(34 - item[0].length);
@@ -746,29 +753,6 @@ function to_object(s_servers) {
     temp_servers.push(server);
   }
   servers = temp_servers;
-}
-
-function to_object_recursive(savedata, obj) {
-  let a;
-  if(!obj.length) { //object or attribute
-      a = {};
-      for(let child of obj) { //each attribute if it exists
-          a[obj[0]] = to_object_recursive(savedata, obj[1]);
-      }
-      console.log(a); 
-      a = [];
-      for(let child in obj) {
-          //a.push({obj[child][0] : to_object_recursive(obj[child][1])});
-      } 
-  } else {
-      console.log(obj[0] instanceof Server);
-      //switch(obj[0])
-      //savedata.push()
-  }
-}
-
-function new_object_of_type(type) {
-  
 }
 
 client.on("ready", () => {

@@ -111,17 +111,16 @@ class Server {
   get_leaderboard() {
     let printed_obj = [];
     this.users.sort(function(user_1, user_2) {
-      if (user_1.score < user_2.score) {
-        return 1;
-      }
-      if (user_1.score > user_2.score) {
-        return -1;
-      }
-      return 0;
+      return user_1.score < user_2.score ? 1 : -1;
     });
+    let user_number = 1;
     for (let user of this.users) {
       if(user.score > 0){
         printed_obj.push([user.username.toString(), user.score.toString()]);
+        user_number++;
+      }
+      if(table_format(printed_obj).length >= 2000){
+        return table_format(printed_obj.slice(0,-1));
       }
     }
     return table_format(printed_obj);
@@ -604,27 +603,34 @@ client.on("guildMemberAdd", member => { //member joins the server
   }
 });
 
-async function read_data() {
-  await fs.readFile("data.json", async (err, data) => {
+function read_data() {
+  fs.readFile("./data.json", (err, data) => {
     let servers = [];
     console.log("Reading data...");
     if (err) {
-      console.log("Data unable to be read.");
+      if (fs.existsSync("./data.json")) {
+        console.log("Data unable to be read.");
+      } else{
+        fs.writeFile('data.json', '[]', function (err) {
+          if (err) return console.log(err);
+          console.log('data.json was created.');
+          servers = [];
+        });
+      }
+      
     } else if (JSON.parse(data) == undefined) {
       servers = [];
       console.log(JSON.stringify(servers, null, 2));
     } else {
       servers = JSON.parse(data);
       servers = to_object(servers);
-      //servers = to_object_recursive(servers);
-      //console.log(JSON.stringify(servers, null, 2));
     }
   });
 }
-async function write_data() {
-  await fs.writeFile("data.json", JSON.stringify(servers, null, 2), err => {
+function write_data() {
+  fs.writeFile("data.json", JSON.stringify(servers, null, 2), err => {
     if (err) {
-      console.log("Data unable to be written");
+      console.log("Data was unable to be written.");
     } else {
       let d = new Date();
       console.log(

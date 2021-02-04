@@ -544,6 +544,10 @@ client.on("message", async message => {
   }
   //look for user
   let user = server.users.find(u => u.id == message.author.id);
+  if(user == undefined) {
+    new_member(message.member);
+    user = server.users.find(u => u.id == message.author.id);
+  }
   let id = message.author.id;
   let guild = message.guild;
   //in a server
@@ -586,6 +590,23 @@ client.on("message", async message => {
     }
   }
 });
+
+function new_member(member) {
+  let server = servers.find(s => s.id == member.guild.id);
+  if (server == null) {
+    return;
+  }
+  let user = server.users.find(u => u.id == member.id);  
+  if(user != null) {
+    server.update_roles(user);
+    server.update_nickname(user);
+    return
+  }
+  else {
+    server.add_new_member(member);
+  }
+  return
+}
 
 client.on("guildMemberAdd", member => { //member joins the server
   let server = servers.find(s => s.id == member.guild.id);
@@ -683,21 +704,22 @@ function word_validate(word, server) {
   } else if (word.startsWith('#')) {
     
   } else if(/\d{18}/g.test(word)) {
-    let user_id = word.substring(3, word.length-1);
-    let channel_id = word.substring(2, word.length-1);
-    let user = server.users.find(user => user.id == user_id);
+    //let user_id = word.substring(3, word.length-1);
+    let id = word.match(/\d{18}/g) //fix me now
+    let user = server.users.find(user => user.id == id);
     if(user != null) {
-      return user.username;      
+      word = word.replace(/<@!\d{18}>/g, user.username) //replace <@\d{18}> with username
     }
-    let channel = server.get_guild().channels.cache.find(c => c.id == channel_id);
+    let channel = server.get_guild().channels.cache.find(c => c.id == id);
     if(channel != null) {
       return channel.name;      
-    } else if(server.word_channel_id == channel_id) {
+    } else if(server.word_channel_id == id) {
       return server.get_channel().name;
     }
   } else {
     return word.toString();
   }
+  return word.toString();
 }
 
 //  ╭──────────────────────────────────────────────╮ //limit of monospace font on mobile

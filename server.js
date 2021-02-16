@@ -698,7 +698,7 @@ function word_validate(word, server) {
   word = word.replace(/^[#@!]/g, "")
   
   if (word.length > 32) {
-    return word.substring(0, 32);
+    return word.substring(0, 32).trim();
   } else if (word == "") {
     return "space";
   } else if (word.startsWith('#')) {

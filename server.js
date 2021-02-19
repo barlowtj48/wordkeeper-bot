@@ -482,6 +482,16 @@ class Server {
     if(this.get_member(target_user.id).bot) { //not allowed to tag the bot
       return;
     }
+    let premium_user = false;
+    await this.get_member(target_user.id).then(member => {
+      if(member.roles.cache.find(role => role.name === "Server Booster")){
+        premium_user = true;
+      }
+    })
+    if(premium_user){
+      await this.get_channel().send("Unable to remove a user that is boosting the server.");
+      return;
+    }
     if (user.score < 10) {
       this.get_channel().send(`You do not have enough boot ${target_user.username}.`);
       return;
@@ -576,8 +586,13 @@ client.on("message", async message => {
     } 
     else {
       message.react("👎");
-      server.self_remove(user);
-      write_data();
+      if(message.member.roles.cache.find(role => role.name === "Server Booster")){
+        await message.channel.send("Unable to remove a user that is boosting the server.");
+      } else {
+        server.self_remove(user);
+        write_data();
+      }
+      
     }
   } else { //could be in one of the created text channels
     for(let channel of server.channels) {

@@ -227,11 +227,11 @@ class Server {
     if(channel_id){
       let channel = this.channels.find(c => c.id == channel_id[0]);
       if(channel != null) {
-        console.log(`Channel role id: ${channel.role_id}`);
-        if(user.roles.find(r => r == channel.role_id)) {
+        console.log(`Channel role id: ${channel.id}`);
+        if(user.roles.find(r => r == channel.id)) {
           return;
         }
-        this.add_role_to_user(user, channel.role_id);
+        await this.add_role_to_user(user, channel.role_id);
       }
     }
   }
@@ -240,9 +240,10 @@ class Server {
       this.update_nickname(user);      
     }
   }
-  add_role_to_user(user, role_id) {
-    let member = this.get_member(user.id);
-    let role = this.get_guild().roles.cache.get(role_id);
+  async add_role_to_user(user, role_id) {
+    let member = await this.get_member(user.id);
+    let guild = await this.get_guild();
+    let role = guild.roles.cache.find(r => r.id == role_id);
     if(!role) {
       console.log(`ROLE IS INVALID: ${role_id}`);
       //role is invalid
@@ -253,7 +254,7 @@ class Server {
        if(member.roles.cache.find(r => r.id == role_id)) {
          return;
        } else {
-         this.get_member(user.id).then(member => member.roles.add(role_id));
+         this.get_member(user.id).then(async member => await member.roles.add(role_id));
          if(!user.roles.find((id) => id == role_id)){
           user.roles.push(role_id);
           write_data();
@@ -783,7 +784,7 @@ function to_object(s_servers) {
     server.users = temp_users;
     let temp_channels = [];
     for (let s_channel of s_server.channels) {
-      let channel = new TextChannel(s_channel.id, s_channel.name, s_channel.role_id, s_channel.creator_name, s_channel.creator_id);
+      let channel = new TextChannel(s_channel.id, s_channel.role_id, s_channel.name, s_channel.creator_name, s_channel.creator_id);
       temp_channels.push(channel);
     }
     server.channels = temp_channels;

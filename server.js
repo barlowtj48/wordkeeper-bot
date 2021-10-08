@@ -2,6 +2,7 @@ const fs = require("fs");
 const Discord = require("discord.js");
 require("dotenv").config();
 const { parse, stringify } = require("flatted/cjs");
+const { channel } = require("diagnostics_channel");
 
 const client = new Discord.Client();
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -17,8 +18,8 @@ const help_doc =
   "`{word} change [new word]` costs 50. Will change the word to any word of your choice.\n" +
   "`{word} create-channel [channel name]` will create a text channel.\n" +
   "`{word} join #[channel]` will allow you to post in any created channel.\n" + 
-  "`{word} gamble [amount] on [1-10]` gives you a 1 in 5 chance of winning 5 times your bet.\n" +
-  "`{word} gamble all on [1-10]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
+  "`{word} gamble [amount] on [1-5]` gives you a 1 in 5 chance of winning 5 times your bet.\n" +
+  "`{word} gamble all on [1-5]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
   "`{word} boot @user` costs 10. Will kick them from the server, however they will always be reinvited.\n" +
   "`{word} multiply [2-5]` will leave you with your amount divided by the multiplier you have entered. This multiplier will affect your score gains for 1 minute.";
 
@@ -525,6 +526,14 @@ class Server {
       await this.get_member(rich_user.id).then(member => member.kick());
     })
   }
+  async spam_remove(user) {
+    user.add_remove(); 
+    user.set_score(0);
+    let rich_user = user.get_user();
+    await rich_user.send(`Chill with the command documentation spam. Your score has been reset to 0.\nHere's an invite link: ${this.invite_link}`).then(async () => {
+      await this.get_member(rich_user.id).then(member => member.kick());
+    })
+  }
 }
 
 client.on("message", async message => {
@@ -567,6 +576,15 @@ client.on("message", async message => {
     let spaced_hotword = server.hotword.replace(/-/g, " ");
     corrected_content = message.content.toLowerCase().replace(spaced_hotword, server.hotword);
     if (message.content.startsWith("!")) {
+      await server.get_channel().messages.fetch({ limit: 10 }).then(messages => {
+        let user_messages = messages.filter((m => m.author.id === user.id && m.content.includes('!')));
+        if(user_messages.size >= 2){
+          console.log(`MESSAGE BEING SPAMMED; REMOVING ${user.username}`);
+          server.spam_remove(user);
+          message.delete();
+          write_data();
+        }
+      });
       let response = server.command_sent(user, message.content.toLowerCase());
       if(response == 'delete_message') {
         await message.delete();

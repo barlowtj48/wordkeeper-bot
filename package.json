@@ -1,16 +1,15 @@
 {
-  "name": "wordkeeper_bot",
-  "version": "0.0.2",
+  "name": "wordkeeper_bot2",
+  "version": "2.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "discord.js": "^12.4.1",
-    "dotenv": "^8.2.0",
-    "flatted": "^2.0.2"
+    "discord.js": "^14.6.0",
+    "dotenv": "^16.0.3"
   },
   "engines": {
-    "node": "12.x"
+    "node": "16.x"
   }
 }

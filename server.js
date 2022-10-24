@@ -1,10 +1,21 @@
 const fs = require("fs");
-const Discord = require("discord.js");
 require("dotenv").config();
-const { parse, stringify } = require("flatted/cjs");
 const { channel } = require("diagnostics_channel");
 
-const client = new Discord.Client();
+const { Client, GatewayIntentBits, Partials, Collection  } = require('discord.js');
+
+const client = new Client({
+	intents: [
+		GatewayIntentBits.Guilds, 
+		GatewayIntentBits.GuildMessages, 
+		GatewayIntentBits.GuildPresences, 
+		GatewayIntentBits.GuildMessageReactions, 
+		GatewayIntentBits.DirectMessages,
+		GatewayIntentBits.MessageContent
+	], 
+	partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction] 
+});
+
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const help_doc =
   "**Wordkeeper Commands:**\n" +
@@ -16,7 +27,6 @@ const help_doc =
   "**Channel Commands:**\n" +
   "`{word} gift @user [amount]` you can gift any user any amount.\n" +
   "`{word} change [new word]` costs 50. Will change the word to any word of your choice.\n" +
-  "`{word} create-channel [channel name]` will create a text channel.\n" +
   "`{word} join #[channel]` will allow you to post in any created channel.\n" + 
   "`{word} gamble [amount] on [1-5]` gives you a 1 in 5 chance of winning 5 times your bet.\n" +
   "`{word} gamble all on [1-5]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
@@ -36,7 +46,6 @@ class User {
     this.score_multiplier = 1;
     this.rank = 0;
     this.score = 0;
-    this.roles = [];
   }
   at() {
     return `<@${this.id}>`;
@@ -74,17 +83,6 @@ class User {
   }
 }
 
-class TextChannel {
-  constructor(m_id, m_role_id, m_name, m_creator_name, m_creator_id) {
-    this.type = "TextChannel";
-    this.id = m_id;
-    this.name = m_name
-    this.role_id = m_role_id;
-    this.creator_name = m_creator_name;
-    this.creator_id = m_creator_id;
-  }
-}
-
 class Server {
   constructor(m_id, m_channel_id, m_hotword) {
     this.type = "Server";
@@ -93,7 +91,6 @@ class Server {
     this.invite_link = 'unassigned';
     this.hotword = m_hotword;
     this.users = [];
-    this.channels = [];
   }
 
   get_user_stats(user) {
@@ -153,22 +150,10 @@ class Server {
   get_channel() {
     return client.channels.cache.get(this.word_channel_id);
   }
-  get_text_channel(id) {
-    return client.channels.cache.get(id);
-  }
   change_channel_name(name) {
     this.get_channel().setName(name);
   }
-  remove_role_from_users(role_id) {
-    console.log(`REMOVING ROLE: ${role_id}`)
-    for(let user of this.users) {
-      user.roles = user.roles.filter((id) => id != role_id);
-    }
-  }
-  remove_role_from_user(user, role_id) {
-    user.roles = user.roles.filter((role) => role != role_id);
-    return;
-  }
+
   async create_invite() {
     let url = 'https://discord.gg/';
     let invite = await this.get_channel().createInvite({
@@ -177,6 +162,7 @@ class Server {
     this.invite_link = url;
     return;
   }
+
   populate_new_server(members) {
     for (let member of members) {
       member = member[1];
@@ -185,87 +171,10 @@ class Server {
       this.users.push(user);
     }
   }
-  async create_text_channel(user, name) {
-    name = word_validate(name, this);
-    let role, channel;
-    role = await this.get_guild().roles.create({
-      data : {
-        name : `${name}-member`, 
-        permissions : ['SEND_MESSAGES']
-      }
-    }).then(async (role) => {
-      channel = await this.get_guild().channels.create(
-        name, 
-        {
-          type : 'text', 
-          name : name, 
-          permissionOverwrites : [
-            {
-              id : role.id, 
-              allow : ['SEND_MESSAGES'], 
-            }, 
-            {
-              id : this.get_guild().roles.everyone.id, //@everyone
-              deny : ['SEND_MESSAGES']
-            }
-          ]
-        }
-      ).then((channel) => {
-        
-        let new_channel = new TextChannel(channel.id, role.id, channel.name, user.username, user.id)
-        
-        this.add_role_to_user(user, role.id);
-        this.get_text_channel(new_channel.id).send(`New Text channel created by ${user.username}!`);
-        this.channels.push(new_channel);
-        console.log(`New channel created by ${new_channel.creator_name}`);
-        write_data(); //need to do this again after the channel is created to ensure data is up to date
-      });
-    });
-  }
 
-  async join_text_channel(user, message) {
-    let channel_id = message.match(/\d{18}/g);
-    if(channel_id){
-      let channel = this.channels.find(c => c.id == channel_id[0]);
-      if(channel != null) {
-        console.log(`Channel role id: ${channel.id}`);
-        if(user.roles.find(r => r == channel.id)) {
-          return;
-        }
-        await this.add_role_to_user(user, channel.role_id);
-      }
-    }
-  }
   update_all_nicknames() {
     for (let user of this.users) {
       this.update_nickname(user);      
-    }
-  }
-  async add_role_to_user(user, role_id) {
-    let member = await this.get_member(user.id);
-    let guild = await this.get_guild();
-    let role = guild.roles.cache.find(r => r.id == role_id);
-    if(!role) {
-      console.log(`ROLE IS INVALID: ${role_id}`);
-      //role is invalid
-      this.remove_role_from_user(user, role_id);
-      return;
-    }
-    this.get_member(user.id).then((member) => {
-       if(member.roles.cache.find(r => r.id == role_id)) {
-         return;
-       } else {
-         this.get_member(user.id).then(async member => await member.roles.add(role_id));
-         if(!user.roles.find((id) => id == role_id)){
-          user.roles.push(role_id);
-          write_data();
-        }
-       }
-    });
-  }
-  update_roles(user) {
-    for(let role_id of user.roles) {
-      this.add_role_to_user(user, role_id);
     }
   }
   add_new_member(member) {
@@ -299,12 +208,6 @@ class Server {
         case "gift":
           this.gift(user, mentioned_user, split_message[2], split_message[3]);
           break;
-        case "create-channel":
-          this.create_text_channel(user, split_message[2]);
-          break;
-        case "join":
-          this.join_text_channel(user, split_message[2]);
-          break;
         case "multiply":
           this.multiply(user, split_message[2]);
           break;
@@ -335,6 +238,14 @@ class Server {
       case "leaderboard":
         this.get_channel().send(this.get_leaderboard());
         break;
+      case "gamers":
+        if(user.id == '140223433878274048') {
+          return 'mcc_custom'
+        } else {
+          return 'delete_message';
+        }
+        
+        break;
       // case "1000":
       //   user.add_score(1000);
       //   break;
@@ -346,33 +257,7 @@ class Server {
         break;
     }
   }
-  
-  text_channel_command_sent(user, message, channel) {
-    if(user.id != channel.creator_id) {
-      this.get_text_channel(channel.id).send("Only the creator of the text channel can modify it.");
-      return;
-    }
-    message = message.substring(1, message.length);
-    switch (message) {
-      case "delete":
-        this.delete_channel(channel);
-        break;
-    }
-  }
-  
-  async delete_channel(channel) {
-    let rich_channel = this.get_text_channel(channel.id);
-    rich_channel.send("This channel will be deleted in 5 seconds.");
-    let role = this.get_guild().roles.cache.get(channel.role_id);
-    this.remove_role_from_users(role.id);
-    console.log(`ID OF DELETED CHANNEL: ${channel.id}`);
-    this.channels = this.channels.filter((del_channel) => del_channel.id != channel.id);
-    setTimeout(() => {
-      role.delete().then(rich_channel.delete());
-      write_data();
-    }, 5000);
-  }
-  
+   
   async gamble(user, amount, number) {
     let channel = this.get_channel();
     if(user.score == 0) {
@@ -536,13 +421,14 @@ class Server {
   }
 }
 
-client.on("message", async message => {
+client.on("messageCreate", async message => {
   if (message.author.bot) return; //later refresh name of tagged users
   if (!message.guild) {
     //the message is a DM
     console.log("DM received.");
     return;
   }
+  
   // if(message.content.toLowerCase() == "reset") { //for debugging
   //     servers = [];
   //     write_data();
@@ -578,7 +464,7 @@ client.on("message", async message => {
     if (message.content.startsWith("!")) {
       await server.get_channel().messages.fetch({ limit: 10 }).then(messages => {
         let user_messages = messages.filter((m => m.author.id === user.id && m.content.includes('!')));
-        if(user_messages.size >= 2){
+        if(user_messages.size >= 4){
           console.log(`MESSAGE BEING SPAMMED; REMOVING ${user.username}`);
           server.spam_remove(user);
           message.delete();
@@ -588,6 +474,8 @@ client.on("message", async message => {
       let response = server.command_sent(user, message.content.toLowerCase());
       if(response == 'delete_message') {
         await message.delete();
+      } else if(response == 'mcc_custom'){
+        send_MCC_sound_message(message.channel, message);
       }
     } else if (corrected_content.startsWith(server.hotword)) {
       let mentioned_id = message.mentions.users.first();
@@ -617,7 +505,12 @@ client.on("message", async message => {
     for(let channel of server.channels) {
       if(message.channel.id == channel.id) {
         if(message.content.startsWith("!")) {
-          server.text_channel_command_sent(user, message.content.toLowerCase(), channel);
+          content = message.content.substring(1, message.content.length);
+          if(content.toLowerCase() == "gamers"){
+            send_MCC_sound_message(message.channel, message);
+          } else {
+            server.text_channel_command_sent(user, message.content.toLowerCase(), channel);
+          }
         }
         write_data();
       }
@@ -632,7 +525,6 @@ function new_member(member) {
   }
   let user = server.users.find(u => u.id == member.id);  
   if(user != null) {
-    server.update_roles(user);
     server.update_nickname(user);
     return
   }
@@ -642,6 +534,17 @@ function new_member(member) {
   return
 }
 
+client.on("voiceStateUpdate", async (oldState, newState) => {
+  if(newState.member.user.bot) return;
+  if(!newState.channelID) return;
+  channelName = newState.channel.name
+  if(channelName.toLowerCase() == "afk"){
+    console.log(`Kicking ${oldState.member.user.username} for being afk.`)
+    await newState.member.voice.kick();
+  }
+  return;
+});
+
 client.on("guildMemberAdd", member => { //member joins the server
   let server = servers.find(s => s.id == member.guild.id);
   if (server == null) {
@@ -649,7 +552,6 @@ client.on("guildMemberAdd", member => { //member joins the server
   }
   let user = server.users.find(u => u.id == member.id);  
   if(user != null) {
-    server.update_roles(user);
     server.update_nickname(user);
     return
   }
@@ -796,19 +698,22 @@ function to_object(s_servers) {
       user.score_multiplier = s_user.score_multiplier;
       user.rank = s_user.rank;
       user.score = s_user.score;
-      user.roles = s_user.roles;
       temp_users.push(user);
     }
     server.users = temp_users;
-    let temp_channels = [];
-    for (let s_channel of s_server.channels) {
-      let channel = new TextChannel(s_channel.id, s_channel.role_id, s_channel.name, s_channel.creator_name, s_channel.creator_id);
-      temp_channels.push(channel);
-    }
-    server.channels = temp_channels;
     temp_servers.push(server);
   }
   servers = temp_servers;
+}
+
+async function send_MCC_sound_message(channel, message){
+  output_dir = process.cwd();
+  dir_choices = ["double_kill", "kill_pocolypse", "kill_tacular"]
+  random_choice = Math.floor(Math.random() * 3);
+  output_dir += `\\sounds\\${dir_choices[random_choice]}\\Attention All Gamers!.mp3`
+
+  await message.delete();
+  await channel.send("@everyone", {files : [ output_dir]});
 }
 
 client.on("ready", () => {

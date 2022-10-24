@@ -1,4 +1,5 @@
-node_modules/
+sounds/
 .vscode/
+node_modules/
 data.json
 .env

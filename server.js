@@ -26,8 +26,8 @@ const help_doc =
   "`!invite` gives an invite to this server.\n\n" +
   "**Channel Commands:**\n" +
   "`{word} gift @user [amount]` you can gift any user any amount.\n" +
+  "`{word} bomb @user` will cost you 20. There's a 50/50 chance you'll set there score to 0, or set your own to 0 and be kicked!\n" +
   "`{word} change [new word]` costs 50. Will change the word to any word of your choice.\n" +
-  "`{word} join #[channel]` will allow you to post in any created channel.\n" + 
   "`{word} gamble [amount] on [1-5]` gives you a 1 in 5 chance of winning 5 times your bet.\n" +
   "`{word} gamble all on [1-5]` gives you a 2 in 5 chance of winning 10 times your bet.\n" + 
   "`{word} boot @user` costs 10. Will kick them from the server, however they will always be reinvited.\n" +
@@ -211,6 +211,9 @@ class Server {
         case "multiply":
           this.multiply(user, split_message[2]);
           break;
+        case "bomb":
+          this.bomb(user, mentioned_user)
+          break;
         default:
           user.add_score(1);
           break;
@@ -338,6 +341,29 @@ class Server {
       this.get_channel().send(`${user.at()} Your multiplier has ended.\n**You ${modifier} ${Math.abs(post_score-pre_score)}**.`);
     }
   }
+
+  async bomb(user, mentioned_user) {
+    let response = afford_check(user, 20);
+    if (response != '') {
+      this.get_channel().send(response);
+      return;
+    }
+
+    let coin_flip = Math.random() < 0.5;
+
+    if(coin_flip) {
+      // Success!
+      mentioned_user.set_score(0);
+      response = `${mentioned_user.at()}: ${user.at()} has bombed you!`;
+    } else {
+      // It's blown up in your face
+      user.set_score(0);
+      this.self_bomb(user);
+      response = `${user.at()} just accidentally bombed themselves!`;
+    }
+    this.get_channel().send(response);
+  }
+
   gift(user, target_user, input_1, input_2) {
     if(user.score == 0) {
       user.add_score(1);
@@ -408,6 +434,13 @@ class Server {
     user.remove_score(10);
     let rich_user = user.get_user();
     await rich_user.send(`It looks like that last message of yours didn't have \`${this.hotword}\` in it.\nMake sure you include the word in the correct channel!\nHere's an invite link: ${this.invite_link}`).then(async () => {
+      await this.get_member(rich_user.id).then(member => member.kick());
+    })
+  }
+  async self_bomb(user) {
+    user.add_remove(); 
+    let rich_user = user.get_user();
+    await rich_user.send(`It looks like you tried to bomb someone, and it blew up in your face. Nice.\nHere's an invite link: ${this.invite_link}`).then(async () => {
       await this.get_member(rich_user.id).then(member => member.kick());
     })
   }
@@ -502,18 +535,14 @@ client.on("messageCreate", async message => {
       
     }
   } else { //could be in one of the created text channels
-    for(let channel of server.channels) {
-      if(message.channel.id == channel.id) {
-        if(message.content.startsWith("!")) {
-          content = message.content.substring(1, message.content.length);
-          if(content.toLowerCase() == "gamers"){
-            send_MCC_sound_message(message.channel, message);
-          } else {
-            server.text_channel_command_sent(user, message.content.toLowerCase(), channel);
-          }
+    if(message.channel.id == channel.id) {
+      if(message.content.startsWith("!")) {
+        content = message.content.substring(1, message.content.length);
+        if(content.toLowerCase() == "gamers"){
+          send_MCC_sound_message(message.channel, message);
         }
-        write_data();
       }
+      write_data();
     }
   }
 });

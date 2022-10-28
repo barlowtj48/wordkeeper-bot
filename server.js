@@ -11,7 +11,8 @@ const client = new Client({
 		GatewayIntentBits.GuildPresences, 
 		GatewayIntentBits.GuildMessageReactions, 
 		GatewayIntentBits.DirectMessages,
-		GatewayIntentBits.MessageContent
+		GatewayIntentBits.MessageContent,
+		GatewayIntentBits.GuildVoiceStates
 	], 
 	partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction] 
 });
@@ -565,11 +566,11 @@ function new_member(member) {
 
 client.on("voiceStateUpdate", async (oldState, newState) => {
   if(newState.member.user.bot) return;
-  if(!newState.channelID) return;
+  if(!newState.channelId) return;
   channelName = newState.channel.name
   if(channelName.toLowerCase() == "afk"){
     console.log(`Kicking ${oldState.member.user.username} for being afk.`)
-    await newState.member.voice.kick();
+    await newState.member.voice.disconnect();
   }
   return;
 });
